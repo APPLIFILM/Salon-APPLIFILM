@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Roue de la Fortune - Applifilm</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body {font-family: Arial, sans-serif; text-align: center; background: #F5F5F5; margin:0; padding:20px;}
+    h1 {color: #004A99;}
+    input, button, select {width: calc(100% - 22px); padding: 10px; margin: 5px 0; font-size: 16px; border-radius: 4px; border: 1px solid #ccc;}
+    #spinBtn {background: #004A99; color: #fff; border: none; cursor: pointer;}
+    #wheelCanvas {margin: 20px auto; display: none; width: 90%; max-width: 400px; height: auto;}
+    #result {margin-top: 20px; font-size: 20px; color: #004A99;}
+  </style>
+</head>
+<body>
+
+<h1>🎉 Tournez la roue Applifilm ! 🎉</h1>
+
+<div id="formDiv">
+  <p>Renseignez vos informations pour jouer :</p>
+  <input type="text" id="nom" placeholder="Nom" required>
+  <input type="text" id="prenom" placeholder="Prénom" required>
+  <input type="tel" id="telephone" placeholder="Téléphone" required>
+  <input type="email" id="email" placeholder="E‑mail" required>
+  <input type="text" id="besoin" placeholder="Besoin" required>
+  <button id="startBtn">Participer</button>
+</div>
+
+<canvas id="wheelCanvas"></canvas>
+<button id="spinBtn" style="display:none;">Tourner la roue</button>
+<div id="result"></div>
+
+<audio id="spinSound"><source src="https://actions.google.com/sounds/v1/alarms/spin.ogg" type="audio/ogg"></audio>
+<audio id="winSound"><source src="https://actions.google.com/sounds/v1/cartoon/clang_and_wobble.ogg" type="audio/ogg"></audio>
+<audio id="loseSound"><source src="https://actions.google.com/sounds/v1/cartoon/boing.ogg" type="audio/ogg"></audio>
+
+<script>
+const scriptURL = 'https://script.google.com/macros/s/AKfycbzevUclpMtSwjhM7hTcGE33vFOmaQQGa8HhzhgRoxqyBmoD_Ws3MGk_e31XlBQghxOu/exec';
+const canvas = document.getElementById('wheelCanvas'), ctx = canvas.getContext('2d');
+const segments = ["❌ Perdu","🌸 Composition florale","🧺 Panier gourmand","🪟 Pose offerte"];
+const colors = ["#cccccc","#004A99","#0073e6","#00aaff"];
+let angle = 0, spinning = false;
+const storageKey = 'roue_applifilm_done';
+
+function drawWheel(){
+  canvas.width = canvas.parentElement.clientWidth;
+  const radius = canvas.width / 2, segAngle = 2 * Math.PI / segments.length;
+  canvas.height = canvas.width;
+  segments.forEach((seg, i) => {
+    ctx.beginPath();
+    ctx.moveTo(radius, radius);
+    ctx.arc(radius, radius, radius, i*segAngle, (i+1)*segAngle);
+    ctx.fillStyle = colors[i];
+    ctx.fill();
+    ctx.save();
+    ctx.translate(radius,radius);
+    ctx.rotate(i*segAngle + segAngle/2);
+    ctx.textAlign="right"; ctx.fillStyle="#fff"; ctx.font="bold 16px Arial";
+    ctx.fillText(seg, radius - 10, 5);
+    ctx.restore();
+  });
+}
+
+function spinWheel(){
+  if(spinning) return;
+  spinning = true;
+  document.getElementById('spinSound').play();
+  const totalRotation = (Math.floor(Math.random()*3+3)*2*Math.PI) + Math.random()*2*Math.PI;
+  const speed = totalRotation / 120, start = performance.now();
+
+  function animate(now){
+    const t = now - start;
+    angle = speed * t;
+    ctx.setTransform(1,0,0,1,0,0);
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    ctx.translate(canvas.width/2, canvas.width/2);
+    ctx.rotate(angle);
+    ctx.translate(-canvas.width/2, -canvas.width/2);
+    drawWheel();
+    if(t < 2000) requestAnimationFrame(animate);
+    else endSpin();
+  }
+  requestAnimationFrame(animate);
+}
+
+function endSpin(){
+  const segAngle = 2*Math.PI/segments.length;
+  const idx = segments.length - Math.floor((angle % (2*Math.PI))/segAngle) - 1;
+  const result = segments[idx];
+  const win = result !== "❌ Perdu";
+  (win ? document.getElementById('winSound') : document.getElementById('loseSound')).play();
+  document.getElementById('result').innerText = win ? "Bravo, vous avez gagné : " + result : "Dommage, vous avez perdu.";
+  sendToSheet(result);
+}
+
+function sendToSheet(lot){
+  const nom = document.getElementById('nom').value,
+        prenom = document.getElementById('prenom').value,
+        telephone = document.getElementById('telephone').value,
+        email = document.getElementById('email').value,
+        besoin = document.getElementById('besoin').value;
+  fetch(scriptURL, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({nom,prenom,telephone,email,besoin,lot})
+  })
+  .then(r => r.text())
+  .then(text => {
+    if(text === "LIMIT_REACHED"){
+      alert("Désolé, ce lot n'est plus disponible. Vous pouvez retenter avec un autre lot !");
+    }
+    localStorage.setItem(storageKey, 'done');
+  });
+}
+
+document.getElementById('startBtn').addEventListener('click', () => {
+  if(localStorage.getItem(storageKey)){ alert("Vous avez déjà joué."); return; }
+  ["nom","prenom","telephone","email","besoin"].forEach(id => {
+    if(!document.getElementById(id).value.trim()){ alert("Veuillez remplir tous les champs."); throw ""; }
+  });
+  document.getElementById('formDiv').style.display = 'none';
+  document.getElementById('spinBtn').style.display = 'block';
+  drawWheel();
+});
+
+document.getElementById('spinBtn').addEventListener('click', spinWheel);
+</script>
+
+</body>
+</html>
